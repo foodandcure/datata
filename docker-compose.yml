@@ -1,0 +1,64 @@
+version: '3.9'
+
+services:
+  backend: &app
+    image: registry.git.amazingcat.net/cattr/core/cattr-backend:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - backend_public:/app/public
+      - backend_storage:/app/storage
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --spider -q "http://127.0.0.1:8090/status"']
+      interval: 10s
+      timeout: 2s
+
+  queue:
+    <<: *app
+    command: ['queue']
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck: {}
+
+  cron:
+    <<: *app
+    command: ['cron']
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck: {}
+
+  frontend:
+    image: registry.git.amazingcat.net/cattr/core/cattr-frontend:latest
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - backend_public:/backend
+    ports:
+      - "127.0.0.1:8089:8080"
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --fail -LI http://127.0.0.1:8080 -o /dev/null -w "%{http_code}\n" -s > /dev/null']
+      interval: 10s
+      timeout: 2s
+
+  db:
+    image: percona:latest
+    environment:
+      - MYSQL_DATABASE=cattr
+      - MYSQL_ROOT_PASSWORD=password
+    cap_add:
+      - SYS_NICE
+    volumes:
+      - database:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+      timeout: 20s
+      retries: 10
+
+volumes:
+  backend_public: {}
+  backend_storage: {}
+  database: {}
